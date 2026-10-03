@@ -16,6 +16,9 @@
 #include "log.h"
 #include "il2cpp-tabledefs.h"
 #include "il2cpp-class.h"
+#include "runtime_export.h"
+#include <cerrno>
+#include <cstdio>
 
 #define DO_API(r, n, p) r (*n) p
 
@@ -419,11 +422,50 @@ void il2cpp_dump(const char *outDir) {
     LOGI("write dump file");
     auto outPath = std::string(outDir).append("/files/dump.cs");
     std::ofstream outStream(outPath);
+    if (!outStream) {
+        LOGE("Cannot open dump.cs: %s", outPath.c_str());
+        return;
+    }
     outStream << imageOutput.str();
     auto count = outPuts.size();
     for (int i = 0; i < count; ++i) {
         outStream << outPuts[i];
     }
     outStream.close();
-    LOGI("dump done!");
+    if (!outStream) {
+        LOGE("Cannot finish dump.cs: %s", outPath.c_str());
+        return;
+    }
+    // 先写入独立暂存目录，再一次性发布；保留旧 dump.cs 路径兼容已有使用方式。
+    std::string staging = std::string(outDir) + "/files/.il2cpp-export-XXXXXX";
+    if (!mkdtemp(staging.data())) {
+        LOGE("Cannot create export directory: %s", strerror(errno));
+        return;
+    }
+    std::ifstream source(outPath, std::ios::binary);
+    std::ofstream copy(staging + "/dump.cs", std::ios::binary);
+    copy << source.rdbuf();
+    copy.close();
+    std::string error;
+    bool ok = source.good() && copy.good();
+    if (!ok) error = "Cannot copy dump.cs into export directory";
+    if (ok) ok = export_runtime_files(staging, il2cpp_base, error);
+    std::string published = staging;
+    const auto hidden = published.rfind("/.il2cpp-export-");
+    if (hidden != std::string::npos) published.erase(hidden + 1, 1);
+    if (ok && rename(staging.c_str(), published.c_str()) != 0) {
+        error = std::string("Cannot publish exports: ") + strerror(errno);
+        ok = false;
+    }
+    if (!ok) {
+        LOGE("Runtime export failed: %s; dump.cs retained", error.c_str());
+        std::ofstream report(std::string(outDir) + "/files/il2cpp-export-error.txt");
+        report << error << '\n';
+        for (const char *name : {"dump.cs", "script.json", "stringliteral.json", "il2cpp.h", "export-report.json"})
+            unlink((staging + "/" + name).c_str());
+        rmdir(staging.c_str());
+        return;
+    }
+    unlink((std::string(outDir) + "/files/il2cpp-export-error.txt").c_str());
+    LOGI("dump done: %s", published.c_str());
 }

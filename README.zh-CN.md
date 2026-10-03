@@ -17,3 +17,9 @@ Zygisk版Il2CppDumper，在游戏运行时dump il2cpp数据，可以绕过保护
       3. 使用Android Studio运行gradle任务`:module:assembleRelease`编译，zip包会生成在`out`文件夹下
 3. 在Magisk里安装模块
 4. 启动游戏，会在`/data/data/GamePackageName/files/`目录下生成`dump.cs`
+
+## 手机端多产物导出
+
+除原有 `dump.cs`，本分支新增 `script.json`、`stringliteral.json`、`il2cpp.h` 和 `export-report.json`，全部在手机端生成，不生成 `DummyDll`。产物位于应用数据目录的 `files/il2cpp-export-<本次随机标识>/`。
+
+JSON 字段对齐 Il2CppDumper 6.7.46；运行时可恢复的信息与静态 EXE 不完全相同。使用方法、准确覆盖范围、IDA 导入和验证说明见 [RUNTIME_EXPORTS.md](RUNTIME_EXPORTS.md)。
